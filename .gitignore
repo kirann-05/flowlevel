@@ -1,0 +1,12 @@
+# Large files — keep locally
+*.npy
+*.pt
+*.zip
+checkpoints/
+data/
+models/
+logs/
+_gym_pcgrl_source/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

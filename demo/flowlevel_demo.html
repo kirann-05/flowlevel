@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowLevel — Skill-Conditioned Level Generator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 32px 16px;
+  }
+
+  .container {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  /* HEADER */
+  header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  header h1 {
+    font-size: 2.6rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #06b6d4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -1px;
+  }
+  header p {
+    color: #94a3b8;
+    margin-top: 8px;
+    font-size: 1rem;
+  }
+  .badge {
+    display: inline-block;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 10px;
+  }
+
+  /* CARD */
+  .card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 20px;
+  }
+
+  /* SKILL SLIDER */
+  .skill-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .skill-label {
+    font-size: 0.85rem;
+    color: #64748b;
+    white-space: nowrap;
+    width: 60px;
+  }
+  .skill-label.right { text-align: right; }
+
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, #22c55e, #eab308, #ef4444);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid #6366f1;
+    cursor: pointer;
+    box-shadow: 0 0 0 4px rgba(99,102,241,0.2);
+    transition: box-shadow 0.2s;
+  }
+  input[type=range]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 0 8px rgba(99,102,241,0.3);
+  }
+
+  .skill-value-display {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .skill-number {
+    font-size: 3rem;
+    font-weight: 800;
+    color: #6366f1;
+    line-height: 1;
+  }
+  .skill-tag {
+    font-size: 0.9rem;
+    color: #94a3b8;
+    margin-top: 4px;
+  }
+
+  /* PRESETS */
+  .presets {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .preset-btn {
+    flex: 1;
+    min-width: 80px;
+    padding: 10px;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background: #0f1117;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.85rem;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .preset-btn:hover { border-color: #6366f1; color: #e2e8f0; background: #1e293b; }
+  .preset-btn .emoji { font-size: 1.4rem; display: block; margin-bottom: 4px; }
+
+  /* GENERATE BUTTON */
+  .gen-btn {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .gen-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(99,102,241,0.4); }
+  .gen-btn:active { transform: translateY(0); }
+  .gen-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* LEVEL GRID */
+  .levels-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 600px) { .levels-grid { grid-template-columns: 1fr; } }
+
+  .level-panel {
+    background: #0f1117;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .level-panel h3 {
+    font-size: 0.8rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+  }
+  .level-panel .skill-badge {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+
+  .sokoban-grid {
+    display: inline-grid;
+    gap: 3px;
+    margin: 0 auto;
+  }
+  .cell {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    transition: all 0.3s;
+  }
+
+  /* Tile colors */
+  .tile-0 { background: #1e293b; }                          /* empty */
+  .tile-1 { background: #475569; border: 2px solid #64748b; } /* wall */
+  .tile-2 { background: #1d4ed8; border: 2px solid #3b82f6; } /* player */
+  .tile-3 { background: #92400e; border: 2px solid #d97706; } /* crate */
+  .tile-4 { background: #166534; border: 2px solid #22c55e; } /* target */
+  .tile-5 { background: #14532d; border: 2px solid #4ade80; } /* crate on target */
+  .tile-6 { background: #1e3a8a; border: 2px solid #60a5fa; } /* player on target */
+  .tile-7 { background: #1e293b; }
+
+  /* STATUS */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: #0f1117;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+    color: #64748b;
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    flex-shrink: 0;
+    box-shadow: 0 0 6px #22c55e;
+  }
+  .status-dot.error { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+  .status-dot.loading {
+    background: #eab308;
+    box-shadow: 0 0 6px #eab308;
+    animation: pulse 1s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+  /* LEGEND */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+    justify-content: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .legend-dot {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* METRICS */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .metric-box {
+    background: #0f1117;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+  }
+  .metric-val {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #6366f1;
+  }
+  .metric-lbl {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    padding: 40px 20px;
+    color: #475569;
+    font-size: 0.9rem;
+  }
+  .empty-state .big { font-size: 2.5rem; margin-bottom: 10px; }
+
+  /* HISTORY */
+  .history-strip {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .history-item {
+    flex-shrink: 0;
+    background: #0f1117;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .history-item:hover { border-color: #6366f1; color: #e2e8f0; }
+  .history-grid {
+    display: inline-grid;
+    gap: 1px;
+    margin-bottom: 4px;
+  }
+  .hcell {
+    width: 8px; height: 8px;
+    border-radius: 1px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <header>
+    <h1>FlowLevel</h1>
+    <p>Skill-Conditioned Sokoban Level Generator</p>
+    <div class="badge">RL + Diffusion Model · IEEE CoG 2026</div>
+  </header>
+
+  <!-- STATUS -->
+  <div class="status-bar" id="statusBar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Connecting to FlowLevel API at localhost:8000...</span>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="card">
+    <h2>Skill Level Control</h2>
+
+    <div class="skill-value-display">
+      <div class="skill-number" id="skillDisplay">0.50</div>
+      <div class="skill-tag" id="skillTag">Medium Difficulty</div>
+    </div>
+
+    <div class="skill-row">
+      <span class="skill-label">Easy</span>
+      <input type="range" id="skillSlider" min="0" max="1" step="0.01" value="0.5">
+      <span class="skill-label right">Hard</span>
+    </div>
+
+    <div class="presets">
+      <button class="preset-btn" onclick="setSkill(0.1)">
+        <span class="emoji">🟢</span>Beginner<br><small>0.1</small>
+      </button>
+      <button class="preset-btn" onclick="setSkill(0.3)">
+        <span class="emoji">🟡</span>Easy<br><small>0.3</small>
+      </button>
+      <button class="preset-btn" onclick="setSkill(0.5)">
+        <span class="emoji">🟠</span>Medium<br><small>0.5</small>
+      </button>
+      <button class="preset-btn" onclick="setSkill(0.7)">
+        <span class="emoji">🔴</span>Hard<br><small>0.7</small>
+      </button>
+      <button class="preset-btn" onclick="setSkill(0.9)">
+        <span class="emoji">💀</span>Expert<br><small>0.9</small>
+      </button>
+    </div>
+
+    <button class="gen-btn" id="genBtn" onclick="generateLevel()">
+      ⚡ Generate Level
+    </button>
+  </div>
+
+  <!-- CURRENT LEVEL -->
+  <div class="card" id="resultCard">
+    <h2>Generated Level</h2>
+    <div id="levelOutput">
+      <div class="empty-state">
+        <div class="big">🎮</div>
+        Click "Generate Level" to create a Sokoban level
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPARISON -->
+  <div class="card" id="compareCard" style="display:none">
+    <h2>Difficulty Comparison</h2>
+    <div class="levels-grid" id="compareGrid"></div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="card">
+    <h2>Tile Legend</h2>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#1e293b;border:1px solid #334155"></div> Empty</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#475569"></div> Wall</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1d4ed8"></div> Player</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#92400e"></div> Crate</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#166534"></div> Target</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#14532d"></div> Crate on Target</div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="card" id="historyCard" style="display:none">
+    <h2>Generation History</h2>
+    <div class="history-strip" id="historyStrip"></div>
+  </div>
+
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+const TILE_EMOJI = {0:'', 1:'🧱', 2:'🧍', 3:'📦', 4:'🎯', 5:'✅', 6:'🎯', 7:''};
+const TILE_COLORS = {0:'#1e293b',1:'#475569',2:'#1d4ed8',3:'#92400e',4:'#166534',5:'#14532d',6:'#1e3a8a',7:'#1e293b'};
+const history = [];
+
+// Check API health on load
+window.addEventListener('load', async () => {
+  try {
+    const r = await fetch(`${API}/health`);
+    const d = await r.json();
+    setStatus('ok', `API online · Device: ${d.device.toUpperCase()} · ${d.levels_available} levels available`);
+  } catch(e) {
+    setStatus('error', 'Cannot reach API. Make sure the server is running: python src/api/serve.py');
+  }
+});
+
+function setStatus(type, msg) {
+  const dot  = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  dot.className = 'status-dot' + (type === 'error' ? ' error' : type === 'loading' ? ' loading' : '');
+  text.textContent = msg;
+}
+
+function setSkill(v) {
+  document.getElementById('skillSlider').value = v;
+  updateSkillDisplay(v);
+}
+
+function updateSkillDisplay(v) {
+  const val = parseFloat(v);
+  document.getElementById('skillDisplay').textContent = val.toFixed(2);
+  const tags = [
+    [0.15, '🟢 Beginner — Very Easy'],
+    [0.30, '🟡 Easy'],
+    [0.50, '🟠 Medium'],
+    [0.70, '🔴 Hard'],
+    [0.85, '💀 Expert'],
+    [1.01, '☠️ Extreme'],
+  ];
+  const tag = tags.find(([t]) => val < t);
+  document.getElementById('skillTag').textContent = tag ? tag[1] : '☠️ Extreme';
+
+  // Color the skill number
+  const hue = Math.round((1 - val) * 120);
+  document.getElementById('skillDisplay').style.color = `hsl(${hue},80%,60%)`;
+}
+
+document.getElementById('skillSlider').addEventListener('input', e => {
+  updateSkillDisplay(e.target.value);
+});
+
+function buildGrid(level, size=48) {
+  const rows = level.length;
+  const cols = level[0].length;
+  const grid = document.createElement('div');
+  grid.className = 'sokoban-grid';
+  grid.style.gridTemplateColumns = `repeat(${cols}, ${size}px)`;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const t = level[r][c];
+      const cell = document.createElement('div');
+      cell.className = `cell tile-${t}`;
+      cell.style.width  = size + 'px';
+      cell.style.height = size + 'px';
+      cell.textContent = TILE_EMOJI[t] || '';
+      cell.title = ['Empty','Wall','Player','Crate','Target','Crate★','Player★'][t] || '';
+      grid.appendChild(cell);
+    }
+  }
+  return grid;
+}
+
+function buildMiniGrid(level) {
+  const rows = level.length, cols = level[0].length;
+  const grid = document.createElement('div');
+  grid.className = 'history-grid';
+  grid.style.gridTemplateColumns = `repeat(${cols}, 8px)`;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const t = level[r][c];
+      const cell = document.createElement('div');
+      cell.className = 'hcell';
+      cell.style.background = TILE_COLORS[t] || '#1e293b';
+      grid.appendChild(cell);
+    }
+  }
+  return grid;
+}
+
+function countTiles(level) {
+  let walls=0, crates=0, targets=0;
+  for (const row of level)
+    for (const t of row) {
+      if (t===1) walls++;
+      if (t===3||t===5) crates++;
+      if (t===4||t===5) targets++;
+    }
+  return {walls, crates, targets};
+}
+
+async function generateLevel() {
+  const skill = parseFloat(document.getElementById('skillSlider').value);
+  const btn   = document.getElementById('genBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating...';
+  setStatus('loading', `Generating level at skill ${skill.toFixed(2)}...`);
+
+  try {
+    const r = await fetch(`${API}/generate/${skill}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+
+    renderLevel(data);
+    addToHistory(data);
+    setStatus('ok', `Level generated · skill=${skill.toFixed(2)} · ${new Date().toLocaleTimeString()}`);
+  } catch(e) {
+    setStatus('error', `Generation failed: ${e.message}. Is the server running?`);
+    document.getElementById('levelOutput').innerHTML = `
+      <div class="empty-state">
+        <div class="big">❌</div>
+        Could not connect to the API.<br>
+        <small>Run: python src/api/serve.py</small>
+      </div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⚡ Generate Level';
+}
+
+function renderLevel(data) {
+  const {skill_level, level} = data;
+  const {walls, crates, targets} = countTiles(level);
+  const out = document.getElementById('levelOutput');
+
+  const hue = Math.round((1 - skill_level) * 120);
+  const color = `hsl(${hue},80%,60%)`;
+
+  out.innerHTML = '';
+
+  // Skill badge
+  const badge = document.createElement('div');
+  badge.className = 'skill-badge';
+  badge.style.background = `hsl(${hue},80%,15%)`;
+  badge.style.border = `1px solid ${color}`;
+  badge.style.color = color;
+  badge.textContent = `Skill Level: ${parseFloat(skill_level).toFixed(2)}`;
+  out.appendChild(badge);
+
+  // Grid
+  const wrap = document.createElement('div');
+  wrap.style.textAlign = 'center';
+  wrap.style.margin = '16px 0';
+  wrap.appendChild(buildGrid(level, 56));
+  out.appendChild(wrap);
+
+  // Metrics
+  const metrics = document.createElement('div');
+  metrics.className = 'metrics-row';
+  metrics.innerHTML = `
+    <div class="metric-box"><div class="metric-val">${walls}</div><div class="metric-lbl">Walls</div></div>
+    <div class="metric-box"><div class="metric-val">${crates}</div><div class="metric-lbl">Crates</div></div>
+    <div class="metric-box"><div class="metric-val">${targets}</div><div class="metric-lbl">Targets</div></div>
+  `;
+  out.appendChild(metrics);
+
+  // Add to comparison if we have 2+ levels
+  if (history.length >= 1) {
+    updateComparison(data);
+  }
+}
+
+function updateComparison(latest) {
+  if (history.length < 1) return;
+  const prev = history[history.length - 1];
+  const card = document.getElementById('compareCard');
+  const grid = document.getElementById('compareGrid');
+  card.style.display = 'block';
+  grid.innerHTML = '';
+
+  for (const item of [prev, latest]) {
+    const panel = document.createElement('div');
+    panel.className = 'level-panel';
+    const sk = parseFloat(item.skill_level);
+    const hue = Math.round((1-sk)*120);
+    const color = `hsl(${hue},80%,60%)`;
+    panel.innerHTML = `<h3>${sk < 0.5 ? 'Previous (Easier)' : 'Previous'} → Skill ${sk.toFixed(2)}</h3>`;
+    const badge = document.createElement('div');
+    badge.className = 'skill-badge';
+    badge.style.cssText = `background:hsl(${hue},80%,15%);border:1px solid ${color};color:${color}`;
+    badge.textContent = sk.toFixed(2);
+    panel.appendChild(badge);
+    const wrap = document.createElement('div');
+    wrap.appendChild(buildGrid(item.level, 40));
+    panel.appendChild(wrap);
+    grid.appendChild(panel);
+  }
+}
+
+function addToHistory(data) {
+  history.push(data);
+  if (history.length > 10) history.shift();
+
+  const card  = document.getElementById('historyCard');
+  const strip = document.getElementById('historyStrip');
+  card.style.display = 'block';
+  strip.innerHTML = '';
+
+  for (let i = history.length-1; i >= 0; i--) {
+    const item = history[i];
+    const sk = parseFloat(item.skill_level);
+    const hue = Math.round((1-sk)*120);
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    div.style.borderColor = i === history.length-1 ? `hsl(${hue},80%,50%)` : '';
+    div.appendChild(buildMiniGrid(item.level));
+    const lbl = document.createElement('div');
+    lbl.style.color = `hsl(${hue},80%,60%)`;
+    lbl.textContent = `Skill ${sk.toFixed(2)}`;
+    div.appendChild(lbl);
+    div.onclick = () => {
+      renderLevel(item);
+      setSkill(sk);
+    };
+    strip.appendChild(div);
+  }
+}
+
+// Initialize display
+updateSkillDisplay(0.5);
+</script>
+</body>
+</html>
