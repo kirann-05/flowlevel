@@ -208,7 +208,9 @@ if os.path.exists(_ESTIMATOR_PATH):
                 super().__init__()
                 self.lstm = _nn.LSTM(n_features, hidden, batch_first=True, num_layers=2, dropout=0.0)
                 self.head = _nn.Sequential(
-                    _nn.Linear(hidden, 32), _nn.ReLU(), _nn.Linear(32, 1), _nn.Sigmoid()
+                    _nn.Linear(hidden, 32), _nn.ReLU(),
+                    _nn.Dropout(0.0),          # matches trained model (eval mode = no-op)
+                    _nn.Linear(32, 1), _nn.Sigmoid()
                 )
             def forward(self, x):
                 _, (h, _) = self.lstm(x)
