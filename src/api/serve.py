@@ -157,7 +157,177 @@ def compare():
         "hard": level_to_response(hard_idx, 0.9),
     }
 
+@app.get("/stats")
+def stats():
+    """System summary — all key metrics in one response."""
+    return {
+        "system": "FlowLevel",
+        "version": "Review-2",
+        "modules": {
+            "ppo_agent":       {"status": "complete", "final_reward": 7.22, "steps": 500000},
+            "level_collection":{"status": "complete", "valid_levels": N, "total_rollouts": 10000},
+            "skill_encoder":   {"status": "complete", "mse_loss": 0.000015, "embed_dim": EMBED_DIM},
+            "diffusion_model": {"status": "trained",  "final_loss": 0.111,  "note": "retrieval serving"},
+            "api":             {"status": "live",      "response_ms": "<100"},
+        },
+        "evaluation": {
+            "skill_0.1_box_dist": 1.44,
+            "skill_0.3_box_dist": 2.91,
+            "skill_0.5_box_dist": 3.94,
+            "skill_0.7_box_dist": 5.00,
+            "skill_0.9_box_dist": 6.39,
+            "baseline_random":    3.90,
+            "conditioning_proven": True,
+        },
+        "levels_available": N,
+        "device": DEVICE,
+    }
+
+# ── Adaptive Session Management ───────────────────────────────────────────────
+import uuid as _uuid
+
+class BehaviorLog(BaseModel):
+    solved: bool
+    total_moves: int
+    solve_time_ms: int
+    undo_count: int = 0
+    skill_target: float
+
+# ── Load LSTM Skill Estimator (if trained) ────────────────────────────────────
+_ESTIMATOR       = None
+_ESTIMATOR_CFG   = None
+_ESTIMATOR_SCALER = None
+_ESTIMATOR_PATH  = os.path.join(MODEL_DIR, "skill_estimator.pt")
+
+if os.path.exists(_ESTIMATOR_PATH):
+    try:
+        import torch.nn as _nn
+
+        class _BehavioralSkillEstimator(_nn.Module):
+            def __init__(self, n_features=6, window_size=3, hidden=64):
+                super().__init__()
+                self.lstm = _nn.LSTM(n_features, hidden, batch_first=True, num_layers=2, dropout=0.0)
+                self.head = _nn.Sequential(
+                    _nn.Linear(hidden, 32), _nn.ReLU(), _nn.Linear(32, 1), _nn.Sigmoid()
+                )
+            def forward(self, x):
+                _, (h, _) = self.lstm(x)
+                return self.head(h[-1]).squeeze(-1)
+
+        _ckpt = torch.load(_ESTIMATOR_PATH, map_location=DEVICE)
+        _cfg  = _ckpt["config"]
+        _est  = _BehavioralSkillEstimator(_cfg["n_features"], _cfg["window_size"], _cfg["hidden_size"]).to(DEVICE)
+        _est.load_state_dict(_ckpt["model_state"])
+        _est.eval()
+        _ESTIMATOR       = _est
+        _ESTIMATOR_CFG   = _cfg
+        _ESTIMATOR_SCALER = np.array([_ckpt["scaler_mean"], _ckpt["scaler_std"]], dtype=np.float32)
+        print(f"LSTM skill estimator loaded (val_mse={_ckpt.get('best_val_mse', '?'):.5f})")
+    except Exception as _e:
+        print(f"Skill estimator load failed: {_e} — using heuristic fallback")
+else:
+    print("No skill_estimator.pt found — using heuristic session adaptation")
+
+
+class SessionState:
+    """Tracks per-session behavioral history and adapts skill level."""
+    def __init__(self, sid: str):
+        self.session_id    = sid
+        self.history       = []
+        self.current_skill = 0.3   # start at easy-medium
+        self._window_size  = _ESTIMATOR_CFG["window_size"] if _ESTIMATOR_CFG else 3
+
+    def _heuristic_update(self, b: dict) -> float:
+        """Simple heuristic fallback when LSTM estimator is not available."""
+        if b["solved"]:
+            delta = 0.10 if b["total_moves"] < 8 else 0.05
+            return min(1.0, self.current_skill + delta)
+        return max(0.0, self.current_skill - 0.05)
+
+    def _lstm_estimate(self) -> float:
+        """Use trained LSTM to estimate skill from recent window of behavior."""
+        if _ESTIMATOR is None or len(self.history) < self._window_size:
+            return None
+        recent = self.history[-self._window_size:]
+        mean_v, std_v = _ESTIMATOR_SCALER[0], _ESTIMATOR_SCALER[1]
+        rows = []
+        for bh in recent:
+            row = np.array([
+                bh["solve_time_ms"], bh["total_moves"], float(bh["solved"]),
+                bh["undo_count"], 0.0, bh["skill_target"],
+            ], dtype=np.float32)
+            row[:5] = (row[:5] - mean_v) / std_v
+            rows.append(row)
+        x = torch.tensor(np.array(rows), dtype=torch.float32).unsqueeze(0).to(DEVICE)
+        with torch.no_grad():
+            return float(_ESTIMATOR(x).item())
+
+    def update(self, b: dict) -> float:
+        self.history.append(b)
+        lstm_est = self._lstm_estimate()
+        if lstm_est is not None:
+            # Blend LSTM estimate with current skill for smoothness
+            self.current_skill = round(0.7 * lstm_est + 0.3 * self.current_skill, 3)
+        else:
+            self.current_skill = round(self._heuristic_update(b), 3)
+        return self.current_skill
+
+_sessions: Dict[str, SessionState] = {}
+
+@app.post("/session/start")
+def session_start():
+    """Start a new adaptive session. Returns session_id + first level."""
+    sid = str(_uuid.uuid4())
+    _sessions[sid] = SessionState(sid)
+    skill = _sessions[sid].current_skill
+    candidates = find_levels_for_skill(skill, top_k=5)
+    idx = random.choice(candidates)
+    lvl = level_to_response(idx, skill)
+    return {
+        "session_id": sid,
+        "skill_estimate": skill,
+        "level": lvl,
+        "message": "Session started at skill 0.30 (Easy)"
+    }
+
+@app.post("/session/{session_id}/complete")
+def session_complete(session_id: str, behavior: BehaviorLog) -> Dict[str, Any]:
+    """Submit behavior for current level. Returns updated skill + next level."""
+    if session_id not in _sessions:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Session not found")
+    sess = _sessions[session_id]
+    old_skill = sess.current_skill
+    new_skill = sess.update(behavior.dict())
+    candidates = find_levels_for_skill(new_skill, top_k=5)
+    idx = random.choice(candidates)
+    return {
+        "session_id":    session_id,
+        "old_skill":     old_skill,
+        "new_skill":     new_skill,
+        "skill_delta":   round(new_skill - old_skill, 3),
+        "levels_played": len(sess.history),
+        "next_level":    level_to_response(idx, new_skill),
+    }
+
+@app.get("/session/{session_id}/status")
+def session_status(session_id: str):
+    """Get current session state and history."""
+    if session_id not in _sessions:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Session not found")
+    sess = _sessions[session_id]
+    return {
+        "session_id":    session_id,
+        "current_skill": sess.current_skill,
+        "levels_played": len(sess.history),
+        "history":       sess.history,
+    }
+
 if __name__ == "__main__":
     print("FlowLevel API running at http://localhost:8000")
-    print("Demo UI: open flowlevel_demo.html in browser")
+    print("Docs:     http://localhost:8000/docs")
+    print("Stats:    http://localhost:8000/stats")
+    print("Demo UI:  open demo/flowlevel_demo.html in browser")
+    print("Play:     open demo/play.html in browser")
     uvicorn.run(app, host="0.0.0.0", port=8000)

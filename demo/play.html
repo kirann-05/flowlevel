@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowLevel — Play Sokoban</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f0f1a;color:#f1f5f9;font-family:'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px}
+h1{font-size:2rem;background:linear-gradient(135deg,#f97316,#facc15);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
+.subtitle{color:#94a3b8;font-size:.9rem;margin-bottom:24px}
+.layout{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+.panel{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px}
+#skill-bar{width:100%;max-width:520px;margin-bottom:16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px;text-align:center}
+.skill-label{font-size:1.4rem;font-weight:700;color:#f97316;margin-bottom:8px}
+.skill-sub{font-size:.85rem;color:#94a3b8}
+#skill-meter{width:100%;height:10px;background:#1e293b;border-radius:6px;margin:10px 0;overflow:hidden}
+#skill-fill{height:100%;background:linear-gradient(90deg,#22c55e,#f97316,#ef4444);border-radius:6px;transition:width .5s ease}
+#game-grid{display:grid;grid-template-columns:repeat(5,64px);grid-template-rows:repeat(5,64px);gap:3px;margin-bottom:16px}
+.cell{width:64px;height:64px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;transition:transform .1s;position:relative}
+.cell-0{background:#1e293b}
+.cell-1{background:#475569}
+.cell-2{background:#3b82f6}
+.cell-3{background:#f97316}
+.cell-4{background:#22c55e}
+.cell-5{background:#84cc16}
+.cell-6{background:#60a5fa}
+.controls{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(2,44px);gap:6px;margin:0 auto 16px}
+.ctrl-btn{width:44px;height:44px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:10px;color:#f1f5f9;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.ctrl-btn:hover,.ctrl-btn:active{background:rgba(249,115,22,.3);border-color:#f97316}
+#stats{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:12px}
+.stat{background:rgba(255,255,255,.06);border-radius:10px;padding:8px 14px;text-align:center}
+.stat-val{font-size:1.3rem;font-weight:700;color:#f97316}
+.stat-lbl{font-size:.75rem;color:#94a3b8}
+.btn{padding:10px 22px;border:none;border-radius:10px;cursor:pointer;font-size:.9rem;font-weight:600;transition:all .2s}
+.btn-primary{background:linear-gradient(135deg,#f97316,#facc15);color:#0f0f1a}
+.btn-secondary{background:rgba(255,255,255,.1);color:#f1f5f9;border:1px solid rgba(255,255,255,.2)}
+.btn:hover{transform:translateY(-1px);opacity:.9}
+#msg{min-height:36px;font-size:1rem;font-weight:600;text-align:center;margin-bottom:12px;padding:8px;border-radius:8px;transition:all .3s}
+.msg-success{background:rgba(34,197,94,.15);color:#22c55e;border:1px solid rgba(34,197,94,.3)}
+.msg-fail{background:rgba(239,68,68,.15);color:#ef4444;border:1px solid rgba(239,68,68,.3)}
+.msg-info{background:rgba(59,130,246,.1);color:#94a3b8;border:1px solid rgba(59,130,246,.2)}
+#history{width:100%;max-width:520px;margin-top:16px}
+.hist-title{font-size:.85rem;color:#94a3b8;margin-bottom:8px;text-align:center}
+#hist-strip{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.hist-thumb{width:48px;height:48px;border-radius:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);padding:2px;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:1px;cursor:pointer}
+.hist-thumb.solved{border-color:#22c55e}
+.hist-thumb.failed{border-color:#ef4444}
+.ht{border-radius:1px}
+#api-status{font-size:.75rem;color:#64748b;margin-bottom:16px}
+#api-status.ok{color:#22c55e}
+#api-status.err{color:#ef4444}
+.right-panel{min-width:200px}
+.right-panel h3{font-size:.9rem;color:#94a3b8;margin-bottom:12px}
+.adapt-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:.85rem}
+.adapt-val{font-weight:700;color:#f97316}
+.legend{display:flex;flex-direction:column;gap:6px;margin-top:16px}
+.leg-item{display:flex;align-items:center;gap:8px;font-size:.8rem;color:#94a3b8}
+.leg-swatch{width:18px;height:18px;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>FlowLevel</h1>
+<p class="subtitle">Adaptive Skill-Conditioned Sokoban · Push boxes onto targets · WASD or arrow keys</p>
+<div id="api-status">Connecting to API…</div>
+
+<div id="skill-bar">
+  <div class="skill-label" id="skill-text">Skill: 0.30 — Easy</div>
+  <div id="skill-meter"><div id="skill-fill" style="width:30%"></div></div>
+  <div class="skill-sub">Auto-adapts based on your performance</div>
+</div>
+
+<div class="layout">
+  <div>
+    <div id="msg" class="msg-info">Loading first level…</div>
+    <div id="game-grid"></div>
+    <div id="stats">
+      <div class="stat"><div class="stat-val" id="moves-val">0</div><div class="stat-lbl">Moves</div></div>
+      <div class="stat"><div class="stat-val" id="time-val">0s</div><div class="stat-lbl">Time</div></div>
+      <div class="stat"><div class="stat-val" id="lvl-val">1</div><div class="stat-lbl">Level</div></div>
+      <div class="stat"><div class="stat-val" id="bd-val">—</div><div class="stat-lbl">Box Dist</div></div>
+    </div>
+    <div class="controls">
+      <div></div><button class="ctrl-btn" id="btn-up" onclick="move(-1,0)">▲</button><div></div>
+      <button class="ctrl-btn" id="btn-left" onclick="move(0,-1)">◄</button>
+      <button class="ctrl-btn" id="btn-down" onclick="move(1,0)">▼</button>
+      <button class="ctrl-btn" id="btn-right" onclick="move(0,1)">►</button>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-secondary" onclick="undoMove()">↩ Undo</button>
+      <button class="btn btn-secondary" onclick="restartLevel()">↺ Restart</button>
+      <button class="btn btn-primary" onclick="skipLevel()">Skip →</button>
+    </div>
+  </div>
+
+  <div class="panel right-panel">
+    <h3>Session Stats</h3>
+    <div class="adapt-row"><span>Levels Played</span><span class="adapt-val" id="sess-played">0</span></div>
+    <div class="adapt-row"><span>Solved</span><span class="adapt-val" id="sess-solved">0</span></div>
+    <div class="adapt-row"><span>Failed</span><span class="adapt-val" id="sess-failed">0</span></div>
+    <div class="adapt-row"><span>Current Skill</span><span class="adapt-val" id="sess-skill">0.30</span></div>
+    <div class="adapt-row"><span>Avg Moves</span><span class="adapt-val" id="sess-avgmoves">—</span></div>
+    <hr style="border-color:rgba(255,255,255,.1);margin:12px 0">
+    <h3>Tile Legend</h3>
+    <div class="legend">
+      <div class="leg-item"><div class="leg-swatch" style="background:#1e293b"></div>Empty</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:#475569"></div>Wall</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:#3b82f6"></div>Player (P)</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:#f97316"></div>Crate (B)</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:#22c55e"></div>Target (●)</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:#84cc16"></div>Crate on Target ✓</div>
+    </div>
+  </div>
+</div>
+
+<div id="history">
+  <div class="hist-title">Level History</div>
+  <div id="hist-strip"></div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+const SKILL_LABELS = [[0,'Beginner'],[0.2,'Easy'],[0.4,'Medium'],[0.6,'Hard'],[0.8,'Expert']];
+const TILE_COLORS = {0:'#1e293b',1:'#475569',2:'#3b82f6',3:'#f97316',4:'#22c55e',5:'#84cc16',6:'#60a5fa'};
+const PLAYER_TILES = new Set([2,6]);
+const CRATE_TILES  = new Set([3,5]);
+const TARGET_TILES = new Set([4,5,6]);
+
+let grid=[], history=[], levelHistory=[];
+let moves=0, undoStack=[], startTime=null, timerID=null;
+let currentSkill=0.3, levelNum=1, solved=false, levelLoading=false;
+let session={played:0,solved:0,failed:0,totalMoves:0};
+
+function skillLabel(s){
+  let lbl='Beginner';
+  for(const[t,l] of SKILL_LABELS){if(s>=t)lbl=l;}
+  return lbl;
+}
+function setSkillUI(s){
+  currentSkill=Math.max(0,Math.min(1,s));
+  document.getElementById('skill-text').textContent=`Skill: ${currentSkill.toFixed(2)} — ${skillLabel(currentSkill)}`;
+  document.getElementById('skill-fill').style.width=(currentSkill*100)+'%';
+  document.getElementById('sess-skill').textContent=currentSkill.toFixed(2);
+}
+function adaptSkill(didSolve,movesTaken){
+  if(didSolve){
+    const delta = movesTaken<8 ? 0.1 : 0.05;
+    setSkillUI(currentSkill+delta);
+  } else {
+    setSkillUI(currentSkill-0.05);
+  }
+}
+
+async function fetchLevel(skill){
+  const r = await fetch(`${API}/generate/${skill.toFixed(2)}`);
+  if(!r.ok) throw new Error('API error');
+  return r.json();
+}
+
+function deepCopy(g){return g.map(r=>[...r]);}
+
+function renderGrid(){
+  const el=document.getElementById('game-grid');
+  el.innerHTML='';
+  grid.forEach((row,r)=>{
+    row.forEach((t,c)=>{
+      const d=document.createElement('div');
+      d.className=`cell cell-${t}`;
+      const syms={0:'',1:'',2:'🧑',3:'📦',4:'🎯',5:'✅',6:'🧑'};
+      d.textContent=syms[t]||'';
+      d.style.fontSize=t===0||t===1?'0':'1.4rem';
+      el.appendChild(d);
+    });
+  });
+}
+
+function checkWin(){
+  return grid.every(row=>row.every(t=>t!==3));
+}
+
+function findPlayer(){
+  for(let r=0;r<grid.length;r++)
+    for(let c=0;c<grid[r].length;c++)
+      if(PLAYER_TILES.has(grid[r][c])) return [r,c];
+  return null;
+}
+
+function move(dr,dc){
+  if(solved||levelLoading) return;
+  const pos=findPlayer();
+  if(!pos) return;
+  const [r,c]=pos;
+  const nr=r+dr, nc=c+dc;
+  if(nr<0||nr>=grid.length||nc<0||nc>=grid[0].length) return;
+  const nt=grid[nr][nc];
+  if(nt===1) return;
+
+  const snap=deepCopy(grid);
+
+  if(CRATE_TILES.has(nt)){
+    const br=nr+dr, bc=nc+dc;
+    if(br<0||br>=grid.length||bc<0||bc>=grid[0].length) return;
+    const bt=grid[br][bc];
+    if(bt===1||CRATE_TILES.has(bt)) return;
+    grid[br][bc] = TARGET_TILES.has(bt) ? 5 : 3;
+    grid[nr][nc] = TARGET_TILES.has(nt) ? 6 : 2;
+  } else {
+    const curTile=grid[r][c];
+    grid[nr][nc] = TARGET_TILES.has(nt) ? 6 : 2;
+    grid[r][c]   = (curTile===6) ? 4 : 0;
+  }
+  const curTile=grid[r][c];
+  if(!PLAYER_TILES.has(grid[nr][nc])){
+    grid[r][c]=(curTile===6)?4:0;
+  } else if(!CRATE_TILES.has(grid[nr]?.[nc])){
+    grid[r][c]=(curTile===6)?4:0;
+  }
+
+  undoStack.push(snap);
+  moves++;
+  document.getElementById('moves-val').textContent=moves;
+  renderGrid();
+
+  if(checkWin()){
+    solved=true;
+    clearInterval(timerID);
+    const t=Math.round((Date.now()-startTime)/1000);
+    showMsg(`Solved in ${moves} moves, ${t}s! 🎉`,'success');
+    addHistory(true);
+    session.solved++;
+    session.totalMoves+=moves;
+    updateSessionUI();
+    adaptSkill(true,moves);
+    setTimeout(()=>loadLevel(),2200);
+  }
+}
+
+function undoMove(){
+  if(!undoStack.length||solved) return;
+  grid=undoStack.pop();
+  moves=Math.max(0,moves-1);
+  document.getElementById('moves-val').textContent=moves;
+  renderGrid();
+}
+
+function restartLevel(){
+  if(!history.length||levelLoading) return;
+  grid=deepCopy(history[history.length-1]);
+  undoStack=[];
+  moves=0;
+  solved=false;
+  document.getElementById('moves-val').textContent=0;
+  startTime=Date.now();
+  renderGrid();
+  showMsg('Level restarted','info');
+}
+
+function skipLevel(){
+  if(levelLoading) return;
+  clearInterval(timerID);
+  session.failed++;
+  updateSessionUI();
+  adaptSkill(false,moves);
+  addHistory(false);
+  loadLevel();
+}
+
+function showMsg(txt,type='info'){
+  const el=document.getElementById('msg');
+  el.textContent=txt;
+  el.className=`msg-${type}`;
+}
+
+function updateTimer(){
+  const s=Math.round((Date.now()-startTime)/1000);
+  document.getElementById('time-val').textContent=s+'s';
+}
+
+function updateSessionUI(){
+  document.getElementById('sess-played').textContent=session.played;
+  document.getElementById('sess-solved').textContent=session.solved;
+  document.getElementById('sess-failed').textContent=session.failed;
+  const avg=session.solved>0?Math.round(session.totalMoves/session.solved):'—';
+  document.getElementById('sess-avgmoves').textContent=avg;
+}
+
+function addHistory(didSolve){
+  const snap=deepCopy(history[history.length-1]||grid);
+  levelHistory.unshift({grid:snap,solved:didSolve});
+  if(levelHistory.length>8) levelHistory.pop();
+  renderHistory();
+}
+
+function renderHistory(){
+  const strip=document.getElementById('hist-strip');
+  strip.innerHTML='';
+  levelHistory.forEach(({grid:g,solved:s})=>{
+    const thumb=document.createElement('div');
+    thumb.className='hist-thumb '+(s?'solved':'failed');
+    g.forEach(row=>row.forEach(t=>{
+      const c=document.createElement('div');
+      c.className='ht';
+      c.style.background=TILE_COLORS[t]||'#0f0f1a';
+      thumb.appendChild(c);
+    }));
+    strip.appendChild(thumb);
+  });
+}
+
+async function loadLevel(){
+  levelLoading=true;
+  showMsg('Generating level…','info');
+  clearInterval(timerID);
+  try{
+    const data=await fetchLevel(currentSkill);
+    grid=data.level.map(r=>[...r]);
+    history.push(deepCopy(grid));
+    undoStack=[];
+    moves=0;
+    solved=false;
+    startTime=Date.now();
+    session.played++;
+    document.getElementById('lvl-val').textContent=session.played;
+    document.getElementById('moves-val').textContent=0;
+    document.getElementById('bd-val').textContent=data.metrics.box_dist;
+    timerID=setInterval(updateTimer,1000);
+    renderGrid();
+    showMsg(`Level ${session.played} — Skill ${currentSkill.toFixed(2)} (${skillLabel(currentSkill)})`,'info');
+    updateSessionUI();
+  }catch(e){
+    showMsg('API error — is the server running?','fail');
+  }
+  levelLoading=false;
+}
+
+document.addEventListener('keydown',e=>{
+  const map={'ArrowUp':[-1,0],'ArrowDown':[1,0],'ArrowLeft':[0,-1],'ArrowRight':[0,1],
+             'w':[-1,0],'s':[1,0],'a':[0,-1],'d':[0,1]};
+  const d=map[e.key];
+  if(d){e.preventDefault();move(...d);}
+  if(e.key==='z'||e.key==='Z') undoMove();
+  if(e.key==='r'||e.key==='R') restartLevel();
+});
+
+(async()=>{
+  const st=document.getElementById('api-status');
+  try{
+    const r=await fetch(`${API}/health`);
+    const d=await r.json();
+    st.textContent=`API OK — ${d.levels_available} levels (${d.device})`;
+    st.className='ok';
+  }catch{
+    st.textContent='API offline — start: python flowlevel/src/api/serve.py';
+    st.className='err';
+  }
+  setSkillUI(0.3);
+  await loadLevel();
+})();
+</script>
+</body>
+</html>

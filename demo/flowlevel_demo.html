@@ -34,6 +34,13 @@
     background-clip: text;
     letter-spacing: -1px;
   }
+  .play-link {
+    display:inline-block;margin-top:12px;padding:10px 24px;
+    background:linear-gradient(135deg,#f97316,#facc15);
+    color:#0f0f1a;font-weight:700;border-radius:10px;
+    text-decoration:none;font-size:.9rem;transition:opacity .2s;
+  }
+  .play-link:hover{opacity:.85}
   header p {
     color: #94a3b8;
     margin-top: 8px;
@@ -271,6 +278,19 @@
     flex-shrink: 0;
   }
 
+  /* VALIDITY BADGE */
+  .validity-badge {
+    display:inline-block;padding:4px 14px;border-radius:20px;
+    font-size:.8rem;font-weight:700;margin-left:10px;
+  }
+  .valid{background:rgba(34,197,94,.15);color:#22c55e;border:1px solid rgba(34,197,94,.3)}
+  .invalid{background:rgba(239,68,68,.15);color:#ef4444;border:1px solid rgba(239,68,68,.3)}
+  /* EVAL TABLE */
+  .eval-table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:8px}
+  .eval-table th{color:#94a3b8;text-align:left;padding:6px 10px;border-bottom:1px solid #334155;font-weight:600}
+  .eval-table td{padding:6px 10px;border-bottom:1px solid #1e293b;color:#e2e8f0}
+  .eval-table tr:last-child td{border-bottom:none}
+  .trend-up{color:#22c55e;font-weight:700}
   /* METRICS */
   .metrics-row {
     display: grid;
@@ -344,7 +364,8 @@
   <header>
     <h1>FlowLevel</h1>
     <p>Skill-Conditioned Sokoban Level Generator</p>
-    <div class="badge">RL + Diffusion Model · IEEE CoG 2026</div>
+    <div class="badge">RL + Diffusion Model · IEEE CoG 2026</div><br>
+    <a class="play-link" href="play.html" target="_blank">🎮 Play Adaptive Sokoban</a>
   </header>
 
   <!-- STATUS -->
@@ -386,9 +407,10 @@
       </button>
     </div>
 
-    <button class="gen-btn" id="genBtn" onclick="generateLevel()">
-      ⚡ Generate Level
-    </button>
+    <div style="display:flex;gap:12px;margin-top:0">
+      <button class="gen-btn" id="genBtn" onclick="generateLevel()" style="flex:2">⚡ Generate Level</button>
+      <button class="gen-btn" id="cmpBtn" onclick="compareEasyHard()" style="flex:1;background:linear-gradient(135deg,#0891b2,#6366f1)">⚖ Compare</button>
+    </div>
   </div>
 
   <!-- CURRENT LEVEL -->
@@ -406,6 +428,22 @@
   <div class="card" id="compareCard" style="display:none">
     <h2>Difficulty Comparison</h2>
     <div class="levels-grid" id="compareGrid"></div>
+  </div>
+
+  <!-- EVAL RESULTS -->
+  <div class="card">
+    <h2>Evaluation Results <small style="color:#64748b;font-size:.75rem;text-transform:none;font-weight:400">(from metrics_runner.py)</small></h2>
+    <table class="eval-table">
+      <thead><tr><th>Skill Level</th><th>Mean Box Distance</th><th>Diversity Score</th><th>Validity %</th></tr></thead>
+      <tbody>
+        <tr><td>0.1 — Beginner</td><td class="trend-up">1.44</td><td>0.583</td><td>52%</td></tr>
+        <tr><td>0.3 — Easy</td><td class="trend-up">2.91</td><td>0.592</td><td>59%</td></tr>
+        <tr><td>0.5 — Medium</td><td class="trend-up">3.94</td><td>0.602</td><td>55%</td></tr>
+        <tr><td>0.7 — Hard</td><td class="trend-up">5.00</td><td>0.613</td><td>59%</td></tr>
+        <tr><td>0.9 — Expert</td><td class="trend-up">6.39</td><td>0.605</td><td>60%</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:.75rem;color:#64748b;margin-top:10px">Baseline (random): mean box_dist ~3.9 flat — FlowLevel shows monotonically increasing difficulty ✓</p>
   </div>
 
   <!-- LEGEND -->
@@ -560,6 +598,43 @@ async function generateLevel() {
   btn.textContent = '⚡ Generate Level';
 }
 
+async function compareEasyHard() {
+  const btn = document.getElementById('cmpBtn');
+  btn.disabled = true; btn.textContent = '⏳ Loading...';
+  try {
+    const r = await fetch(`${API}/compare`);
+    const d = await r.json();
+    const card = document.getElementById('compareCard');
+    const grid = document.getElementById('compareGrid');
+    card.style.display = 'block';
+    grid.innerHTML = '';
+    for (const [key, item] of [['easy (skill 0.1)', d.easy], ['hard (skill 0.9)', d.hard]]) {
+      const panel = document.createElement('div');
+      panel.className = 'level-panel';
+      const sk = parseFloat(item.skill_level);
+      const hue = Math.round((1-sk)*120);
+      const color = `hsl(${hue},80%,60%)`;
+      panel.innerHTML = `<h3>${key.toUpperCase()} — Skill ${sk.toFixed(2)}<br><small style='color:#94a3b8'>box_dist: ${item.metrics.box_dist}</small></h3>`;
+      const wrap = document.createElement('div');
+      wrap.style.textAlign='center'; wrap.appendChild(buildGrid(item.level, 40));
+      panel.appendChild(wrap);
+      grid.appendChild(panel);
+    }
+    setStatus('ok', 'Comparison loaded — see difficulty contrast below');
+  } catch(e) { setStatus('error', 'Compare failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = '⚖ Compare';
+}
+
+function isValidLevel(level) {
+  let players=0,crates=0,targets=0;
+  for(const row of level) for(const t of row){
+    if(t===2||t===6) players++;
+    if(t===3||t===5) crates++;
+    if(t===4||t===5||t===6) targets++;
+  }
+  return players===1 && crates>=1 && targets>=1 && crates===targets;
+}
+
 function renderLevel(data) {
   const {skill_level, level} = data;
   const {walls, crates, targets} = countTiles(level);
@@ -595,6 +670,12 @@ function renderLevel(data) {
     <div class="metric-box"><div class="metric-val">${targets}</div><div class="metric-lbl">Targets</div></div>
   `;
   out.appendChild(metrics);
+
+  // Validity badge
+  const vBadge = document.createElement('span');
+  vBadge.className = 'validity-badge ' + (isValidLevel(level) ? 'valid' : 'invalid');
+  vBadge.textContent = isValidLevel(level) ? '✓ Valid' : '✗ Invalid';
+  badge.after(vBadge);
 
   // Add to comparison if we have 2+ levels
   if (history.length >= 1) {
