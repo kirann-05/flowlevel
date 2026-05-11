@@ -18,8 +18,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-DATA_DIR   = os.path.join(PROJECT_DIR, "data")
-MODEL_DIR  = os.path.join(PROJECT_DIR, "models")
+DATA_DIR   = os.path.join(PROJECT_DIR, "data_10x10")
+MODEL_DIR  = os.path.join(PROJECT_DIR, "models_10x10")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 EMBED_DIM  = 16

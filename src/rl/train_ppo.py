@@ -19,22 +19,23 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.utils import set_random_seed
 
 ENV_ID         = "sokoban-narrow-v0"
-N_ENVS         = 4
-TOTAL_STEPS    = 500_000
-SAVE_FREQ      = 100_000
-CHECKPOINT_DIR = os.path.join(PROJECT_DIR, "checkpoints")
-FINAL_PATH     = os.path.join(CHECKPOINT_DIR, "ppo_sokoban_final")
+N_ENVS         = 8
+TOTAL_STEPS    = 2_000_000
+SAVE_FREQ      = 250_000
+CHECKPOINT_DIR = os.path.join(PROJECT_DIR, "checkpoints_10x10")
+FINAL_PATH     = os.path.join(CHECKPOINT_DIR, "ppo_sokoban_10x10_final")
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Device   : {device}")
-print(f"Env      : {ENV_ID}")
+print(f"Env      : {ENV_ID} (10x10)")
 print(f"Steps    : {TOTAL_STEPS:,}")
 print(f"Parallel : {N_ENVS} envs")
 
 def make_env(rank, seed=42):
     def _init():
         e = gym.make(ENV_ID)
+        e.unwrapped.adjust_param(width=10, height=10)
         e.seed(seed + rank)
         return e
     set_random_seed(seed)

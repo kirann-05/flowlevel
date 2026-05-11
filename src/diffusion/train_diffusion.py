@@ -16,14 +16,14 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-DATA_DIR   = os.path.join(PROJECT_DIR, "data")
-MODEL_DIR  = os.path.join(PROJECT_DIR, "models")
+DATA_DIR   = os.path.join(PROJECT_DIR, "data_10x10")
+MODEL_DIR  = os.path.join(PROJECT_DIR, "models_10x10")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 N_TILES    = 8
 EMBED_DIM  = 16
 T_STEPS    = 1000
-EPOCHS     = 150
+EPOCHS     = 200        # increased for 10x10
 BATCH_SIZE = 64
 LR         = 2e-4
 DEVICE     = "cuda" if torch.cuda.is_available() else "cpu"
@@ -70,25 +70,22 @@ class Block(nn.Module):
 
 class UNet(nn.Module):
     """
-    Flat UNet for 5x5 inputs — no pooling at all.
-    Three sequential blocks with skip connections via concat.
-    Channel flow:
-      e1 : (B, 8,  5, 5) -> (B, 32, 5, 5)
-      e2 : (B, 32, 5, 5) -> (B, 64, 5, 5)
-      bt : (B, 64, 5, 5) -> (B, 64, 5, 5)
-      d2 : cat(bt,e2)=128 -> (B, 32, 5, 5)
-      d1 : cat(d2,e1)=64  -> (B, 32, 5, 5)
-      out: (B, 32, 5, 5)  -> (B, 8,  5, 5)
+    Standard UNet with 2 pooling levels for 10x10 input.
+    10x10 -> pool -> 5x5 -> pool -> 2x2 -> bottleneck -> upsample -> upsample
     """
     def __init__(self, in_ch=N_TILES, cd=EMBED_DIM+32):
         super().__init__()
         self.t_mlp = nn.Sequential(nn.Linear(32,64), nn.GELU(), nn.Linear(64,32))
-        self.e1 = Block(in_ch, 32, cd)
-        self.e2 = Block(32,    64, cd)
-        self.bt = Block(64,    64, cd)
-        self.d2 = Block(128,   32, cd)   # 64+64 = 128
-        self.d1 = Block(64,    32, cd)   # 32+32 = 64
-        self.out = nn.Conv2d(32, in_ch, 1)
+        base = 64
+        self.e1 = Block(in_ch,  base,   cd)   # 10x10
+        self.e2 = Block(base,   base*2, cd)   # 5x5 after pool
+        self.bt = Block(base*2, base*2, cd)   # 2x2 after pool
+        self.d2 = Block(base*4, base,   cd)   # 5x5 after upsample + concat
+        self.d1 = Block(base*2, base,   cd)   # 10x10 after upsample + concat
+        self.out = nn.Conv2d(base, in_ch, 1)
+        self.pool = nn.MaxPool2d(2)
+        self.up2  = nn.Upsample(size=(5,5), mode='nearest')
+        self.up1  = nn.Upsample(size=(10,10), mode='nearest')
 
     def sin_t(self, t):
         h = 16
@@ -98,12 +95,12 @@ class UNet(nn.Module):
 
     def forward(self, x, t, sk):
         c  = torch.cat([sk, self.t_mlp(self.sin_t(t))], -1)
-        e1 = self.e1(x,  c)                         # (B, 32, 5, 5)
-        e2 = self.e2(e1, c)                         # (B, 64, 5, 5)
-        b  = self.bt(e2, c)                         # (B, 64, 5, 5)
-        d2 = self.d2(torch.cat([b,  e2], 1), c)    # (B, 32, 5, 5)
-        d1 = self.d1(torch.cat([d2, e1], 1), c)    # (B, 32, 5, 5)
-        return self.out(d1)                         # (B,  8, 5, 5)
+        e1 = self.e1(x, c)                                   # (B, 64,  10, 10)
+        e2 = self.e2(self.pool(e1), c)                       # (B, 128,  5,  5)
+        b  = self.bt(self.pool(e2), c)                       # (B, 128,  2,  2)
+        d2 = self.d2(torch.cat([self.up2(b), e2], 1), c)    # (B, 64,   5,  5)
+        d1 = self.d1(torch.cat([self.up1(d2), e1], 1), c)   # (B, 64,  10, 10)
+        return self.out(d1)                                   # (B, 8,   10, 10)
 
 
 model = UNet().to(DEVICE)

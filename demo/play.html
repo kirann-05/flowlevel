@@ -16,8 +16,8 @@ h1{font-size:2rem;background:linear-gradient(135deg,#f97316,#facc15);-webkit-bac
 .skill-sub{font-size:.85rem;color:#94a3b8}
 #skill-meter{width:100%;height:10px;background:#1e293b;border-radius:6px;margin:10px 0;overflow:hidden}
 #skill-fill{height:100%;background:linear-gradient(90deg,#22c55e,#f97316,#ef4444);border-radius:6px;transition:width .5s ease}
-#game-grid{display:grid;grid-template-columns:repeat(5,64px);grid-template-rows:repeat(5,64px);gap:3px;margin-bottom:16px}
-.cell{width:64px;height:64px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;transition:transform .1s;position:relative}
+#game-grid{display:grid;gap:3px;margin-bottom:16px}
+.cell{border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;transition:transform .1s;position:relative}
 .cell-0{background:#1e293b}
 .cell-1{background:#475569}
 .cell-2{background:#3b82f6}
@@ -43,7 +43,7 @@ h1{font-size:2rem;background:linear-gradient(135deg,#f97316,#facc15);-webkit-bac
 #history{width:100%;max-width:520px;margin-top:16px}
 .hist-title{font-size:.85rem;color:#94a3b8;margin-bottom:8px;text-align:center}
 #hist-strip{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.hist-thumb{width:48px;height:48px;border-radius:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);padding:2px;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:1px;cursor:pointer}
+.hist-thumb{width:48px;height:48px;border-radius:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);padding:2px;display:grid;gap:1px;cursor:pointer}
 .hist-thumb.solved{border-color:#22c55e}
 .hist-thumb.failed{border-color:#ef4444}
 .ht{border-radius:1px}
@@ -161,11 +161,16 @@ function deepCopy(g){return g.map(r=>[...r]);}
 
 function renderGrid(){
   const el=document.getElementById('game-grid');
+  const rows=grid.length, cols=grid[0].length;
+  const cellSize = cols > 7 ? 40 : 64;
+  el.style.gridTemplateColumns = `repeat(${cols},${cellSize}px)`;
   el.innerHTML='';
   grid.forEach((row,r)=>{
     row.forEach((t,c)=>{
       const d=document.createElement('div');
       d.className=`cell cell-${t}`;
+      d.style.width = cellSize+'px';
+      d.style.height = cellSize+'px';
       const syms={0:'',1:'',2:'🧑',3:'📦',4:'🎯',5:'✅',6:'🧑'};
       d.textContent=syms[t]||'';
       d.style.fontSize=t===0||t===1?'0':'1.4rem';
@@ -297,6 +302,8 @@ function renderHistory(){
   levelHistory.forEach(({grid:g,solved:s})=>{
     const thumb=document.createElement('div');
     thumb.className='hist-thumb '+(s?'solved':'failed');
+    thumb.style.gridTemplateColumns = `repeat(${g[0].length},1fr)`;
+    thumb.style.gridTemplateRows = `repeat(${g.length},1fr)`;
     g.forEach(row=>row.forEach(t=>{
       const c=document.createElement('div');
       c.className='ht';

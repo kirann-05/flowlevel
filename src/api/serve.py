@@ -21,8 +21,8 @@ from typing import Dict, Any
 import uvicorn
 
 DEVICE    = "cuda" if torch.cuda.is_available() else "cpu"
-DATA_DIR  = os.path.join(PROJECT_DIR, "data")
-MODEL_DIR = os.path.join(PROJECT_DIR, "models")
+DATA_DIR  = os.path.join(PROJECT_DIR, "data_10x10")
+MODEL_DIR = os.path.join(PROJECT_DIR, "models_10x10")
 
 EMBED_DIM = 16
 TILE_NAMES = {
